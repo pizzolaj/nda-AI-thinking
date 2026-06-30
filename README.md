@@ -1,1 +1,1 @@
-# nda-AI-thinking
+see index
