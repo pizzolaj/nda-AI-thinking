@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ignite · Draft review — calm processing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.544.0/lucide.min.js"></script>
+<style>
+  :root {
+    --brand-red: #C41F3E;
+    --border: #D9D9D6;
+    --text-1: #383B3E; --text-2: #606366; --text-3: #86888A;
+    --app-bg: #F2F3F2; --surface: #FFFFFF; --hover: #E8E8E6;
+    --success: #397952; --success-bg: #E7F2ED;
+    --neutral: #606366; --neutral-bg: #E8E8E6;
+    --accent: #8B1D41; --accent-bg: #F6EDF0;
+    /* AI "thinking" colour — in-progress only, resolves to semantic colours at rest */
+    --ai: #34347A;
+    --ai-bg: rgba(52,52,122,.06);
+    --ai-border: rgba(52,52,122,.28);
+    --ai-track: rgba(52,52,122,.12);
+    --shadow-md: 0 4px 14px rgba(0,0,0,.10);
+    --r-card: 16px; --r-row: 10px;
+    --ease: cubic-bezier(.22,.61,.36,1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    font-feature-settings: 'cv02','cv03','cv04','cv11'; background: var(--app-bg); color: var(--text-1);
+    font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .lucide { width: 1em; height: 1em; stroke-width: 2; vertical-align: middle; }
+
+  .canvas { min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 56px 24px 64px; }
+
+  .card { width: 100%; max-width: 540px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-card); box-shadow: var(--shadow-md); padding: 26px 26px 22px; }
+
+  .head { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 600; }
+  .head .spark { color: var(--ai); font-size: 18px; }
+  .expect { margin-top: 5px; font-size: 13px; color: var(--text-3); }
+
+  /* live line — the single per-category status; indigo while AI is working */
+  .live { margin-top: 18px; font-size: 14.5px; font-weight: 500; color: var(--ai); min-height: 21px;
+    display: flex; align-items: center; gap: 8px; }
+  .live.done { color: var(--text-1); font-weight: 600; }
+  .live b { font-weight: 600; }
+
+  /* progress — the ONE focal motion */
+  .bar { margin-top: 12px; height: 8px; border-radius: 8px; background: var(--ai-track); overflow: hidden; }
+  .fill { height: 100%; width: 0; border-radius: 8px; background: var(--ai); transition: width .6s var(--ease); position: relative; }
+  .fill::after { content: ''; position: absolute; inset: 0; border-radius: 8px;
+    background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.45) 50%, transparent 80%);
+    background-size: 220% 100%; animation: sheen 1.6s linear infinite; }
+  .fill.done { background: var(--success); }
+  .fill.done::after { display: none; }
+  @keyframes sheen { 0% { background-position: 180% 0; } 100% { background-position: -80% 0; } }
+
+  .count { margin-top: 8px; display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-3); font-weight: 500; }
+  .count .n { color: var(--text-2); font-weight: 600; }
+
+  /* group rows */
+  .groups { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .group { border: 1px solid var(--border); border-radius: var(--r-row); overflow: hidden;
+    transition: background .25s var(--ease), border-color .25s var(--ease); }
+  .group.active { background: var(--ai-bg); border-color: var(--ai-border); }
+  .g-head { display: flex; align-items: center; gap: 11px; width: 100%; padding: 12px 14px; cursor: pointer;
+    background: none; border: none; font-family: inherit; text-align: left; }
+  .g-head:hover { background: rgba(0,0,0,.02); }
+  .g-status { width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center; }
+  .g-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--border); }
+  .group.active .g-status { color: var(--ai); }
+  .g-name { font-size: 14px; font-weight: 600; color: var(--text-1); flex: 1; min-width: 0; }
+  .g-meta { display: flex; align-items: center; gap: 9px; flex: none; }
+  .g-count { font-size: 12px; color: var(--text-3); font-weight: 500; white-space: nowrap; }
+  .g-result { font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .g-result.pass { color: var(--success); }
+  .g-result.flag { color: var(--neutral); }
+  .g-chev { color: var(--text-3); font-size: 17px; transition: transform .22s var(--ease); flex: none; }
+  .group.open .g-chev { transform: rotate(180deg); }
+
+  .g-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .25s var(--ease); }
+  .group.open .g-body { grid-template-rows: 1fr; }
+  .g-body-in { overflow: hidden; }
+  .g-body-pad { padding: 2px 14px 12px 42px; border-top: 1px solid var(--border); }
+  .cat { padding: 9px 0; }
+  .cat + .cat { border-top: 1px dashed var(--border); }
+  .cat-top { display: flex; align-items: center; gap: 8px; }
+  .cat-name { font-size: 13px; font-weight: 600; color: var(--text-1); }
+  .cat-n { font-size: 12px; color: var(--text-3); margin-left: 5px; }
+  .cat-sp { flex: 1; }
+  .sme { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 999px;
+    font-size: 10px; font-weight: 600; background: var(--accent-bg); color: var(--accent); white-space: nowrap; }
+  .sme .lucide { font-size: 11px; }
+  .rules { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+  .rule { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); }
+  .rule .lucide { font-size: 13px; flex: none; }
+  .rule .rtag { margin-left: auto; font-size: 10px; font-weight: 600; color: var(--neutral); }
+
+  .detail-toggle { margin-top: 14px; background: none; border: none; padding: 4px 0; font-family: inherit;
+    font-size: 12.5px; font-weight: 600; color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .detail-toggle .lucide { font-size: 14px; color: var(--text-3); }
+
+  /* outcome */
+  .outcome { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); display: none; align-items: center; gap: 9px;
+    font-size: 13.5px; color: var(--text-1); }
+  .outcome.show { display: flex; }
+  .outcome .lucide { color: var(--success); font-size: 17px; flex: none; }
+  .outcome b { font-weight: 600; }
+
+  /* demo-only controls (not part of the product screen) */
+  .demo { width: 100%; max-width: 540px; margin-top: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    font-size: 12px; color: var(--text-3); }
+  .demo-label { font-weight: 600; letter-spacing: .03em; text-transform: uppercase; font-size: 10.5px; }
+  .demo-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; height: 30px; padding: 0 11px;
+    font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-1); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .demo-btn .lucide { font-size: 13px; color: var(--text-2); }
+  .speed { display: inline-flex; gap: 2px; background: var(--app-bg); border: 1px solid var(--border); border-radius: 7px; padding: 2px; }
+  .speed .seg { background: transparent; border: none; border-radius: 5px; padding: 0 9px; height: 26px;
+    font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+  .speed .seg.active { background: var(--ai); color: #fff; }
+  .demo .t { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fill::after { display: none; }
+    .fill, .g-body, .g-chev { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="card">
+    <div class="head"><i data-lucide="sparkles" class="spark"></i> CAI is reviewing your draft</div>
+    <div class="expect" id="expect">This usually takes a minute or two.</div>
+
+    <div class="live" id="live">Preparing your draft…</div>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="count"><span id="countLeft">Reviewing against the rules that apply to this article</span><span><span class="n" id="countN">0</span> of 26 checks</span></div>
+
+    <div class="groups" id="groups"></div>
+
+    <button class="detail-toggle" id="detailToggle"><i data-lucide="list"></i> Show details</button>
+
+    <div class="outcome" id="outcome"><i data-lucide="circle-check"></i> <span id="outcomeText"></span></div>
+  </div>
+
+  <!-- demo only — not part of the product screen -->
+  <div class="demo">
+    <span class="demo-label">Demo only</span>
+    <button class="demo-btn" id="replay"><i data-lucide="rotate-ccw"></i> Replay</button>
+    <div class="speed" role="group" aria-label="Run speed">
+      <button class="seg active" data-speed="optimal" title="Optimal · under 1 min">Optimal</button>
+      <button class="seg" data-speed="average" title="Average · up to 2 min">Average</button>
+      <button class="seg" data-speed="worst" title="Worst case · 3 min+">Worst</button>
+    </div>
+    <span class="t" id="elapsed" title="Elapsed run time">0:00</span>
+  </div>
+</div>
+
+<script>
+/* Only the rules relevant to THIS draft are shown (a subset of the 64-rule book). */
+const GROUPS = [
+  { id:'seogeo', name:'SEO & GEO structure', cats:[
+    { name:'Search optimization', sme:false, rules:['Match search intent','Content depth','E-E-A-T trust signals','Insurance & province relevance'] },
+    { name:'Generative engine optimization', sme:false, rules:['Answer-first structure','Question-based headings','Conversion CTA present'] },
+  ]},
+  { id:'editorial', name:'Editorial & brand', cats:[
+    { name:'Brand, voice & tone', sme:true, rules:['Approved terminology','Reader-first (2nd person)'] },
+    { name:'Clarity & plain language', sme:true, rules:['Plain, advisor-like language'] },
+    { name:'Editorial mechanics', sme:true, flags:['Canadian English mechanics','Grammar & proofreading'],
+      rules:['Footnote & disclaimer formatting','Canadian English mechanics','Grammar & proofreading'] },
+  ]},
+  { id:'compliance', name:'CIBC compliance gates', cats:[
+    { name:'Insurer role & attribution', sme:true, rules:['Do not imply CIBC is the insurer','Approved legal-entity names'] },
+    { name:'Product & coverage accuracy', sme:true, rules:['Canonical product names','Align benefits with policy wording','State coverage triggers precisely'] },
+    { name:'Eligibility & disclosures', sme:true, rules:['Qualify exclusions & material terms','"Policy wording governs" disclosure','Disclosure prominence & proximity','Pre-existing condition statements'] },
+    { name:'Claims & marketing conduct', sme:false, rules:['Avoid guaranteed-outcome language','Substantiate factual claims'] },
+    { name:'Governance & freshness', sme:true, rules:['Source traceability','Content freshness'] },
+  ]},
+];
+const N = GROUPS.reduce((s,g)=>s+g.cats.reduce((a,c)=>a+c.rules.length,0),0);
+const TOTAL_FLAGS = GROUPS.reduce((s,g)=>s+g.cats.reduce((a,c)=>a+((c.flags&&c.flags.length)||0),0),0);
+
+function ico(n,cls,st){ return `<i data-lucide="${n}"${cls?` class="${cls}"`:''}${st?` style="${st}"`:''}></i>`; }
+function icons(){ if(window.lucide) lucide.createIcons(); }
+
+/* render groups (collapsed) */
+const groupsEl = document.getElementById('groups');
+const reg = []; // flat category list with element refs
+GROUPS.forEach(g=>{
+  const groupFlags = g.cats.reduce((a,c)=>a+((c.flags&&c.flags.length)||0),0);
+  const gn = g.cats.reduce((a,c)=>a+c.rules.length,0);
+  const el = document.createElement('div');
+  el.className = 'group'; el.dataset.id = g.id;
+  el.innerHTML = `
+    <button class="g-head" type="button">
+      <span class="g-status"><span class="g-dot"></span></span>
+      <span class="g-name">${g.name}</span>
+      <span class="g-meta">
+        <span class="g-result" style="display:none"></span>
+        <span class="g-count">${gn} checks</span>
+        ${ico('chevron-down','g-chev')}
+      </span>
+    </button>
+    <div class="g-body"><div class="g-body-in"><div class="g-body-pad">
+      ${g.cats.map(c=>`
+        <div class="cat">
+          <div class="cat-top">
+            <span class="cat-name">${c.name}<span class="cat-n">${c.rules.length}</span></span>
+            <span class="cat-sp"></span>
+            ${c.sme?`<span class="sme" title="Written with CIBC insurance experts">${ico('user-check')} Expert-reviewed</span>`:''}
+          </div>
+          <div class="rules">
+            ${c.rules.map(r=>{ const fl=c.flags&&c.flags.includes(r);
+              return `<div class="rule">${ico('check','', 'color:var(--success)')}<span>${r}</span>${fl?`<span class="rtag">to review</span>`:''}</div>`; }).join('')}
+          </div>
+        </div>`).join('')}
+    </div></div></div>`;
+  el.querySelector('.g-head').addEventListener('click', ()=> el.classList.toggle('open'));
+  groupsEl.appendChild(el);
+  g.cats.forEach(c=> reg.push({ g, c, el, groupFlags }));
+});
+icons();
+
+/* engine */
+const liveEl = document.getElementById('live');
+const fillEl = document.getElementById('fill');
+const countN = document.getElementById('countN');
+const expectEl = document.getElementById('expect');
+const outcomeEl = document.getElementById('outcome');
+const outcomeText = document.getElementById('outcomeText');
+const elapsedEl = document.getElementById('elapsed');
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const SPEEDS = { optimal:1, average:2, worst:3.8 };
+let speedMult = 1, paused=false, timers=[], qi=0, queue=[], done=0;
+let startTime=0, pausedAccum=0, pauseStart=0, tick=null;
+
+function fmt(ms){ const s=Math.max(0,Math.floor(ms/1000)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+function updTimer(){ const live=paused?(Date.now()-pauseStart):0; elapsedEl.textContent=fmt(Date.now()-startTime-pausedAccum-live); }
+function startTimer(){ startTime=Date.now(); pausedAccum=0; pauseStart=0; clearInterval(tick); tick=setInterval(updTimer,250); updTimer(); }
+function stopTimer(){ clearInterval(tick); tick=null; updTimer(); }
+
+function buildQueue(){
+  queue = [];
+  queue.push({type:'prepare', dur:5000});
+  let curGroup=null;
+  reg.forEach((item,idx)=>{
+    if(item.g!==curGroup){ queue.push({type:'group-on', item, dur:0}); curGroup=item.g; }
+    queue.push({type:'cat', item, dur:4200});
+  });
+  queue.push({type:'done', dur:0});
+}
+
+function setGroupResult(g, el){
+  const flags = g.cats.reduce((a,c)=>a+((c.flags&&c.flags.length)||0),0);
+  el.classList.remove('active');
+  const st = el.querySelector('.g-status');
+  st.innerHTML = flags ? ico('circle-alert','', 'color:var(--neutral)') : ico('circle-check','', 'color:var(--success)');
+  const res = el.querySelector('.g-result');
+  res.style.display='';
+  res.className = 'g-result ' + (flags?'flag':'pass');
+  res.textContent = flags ? `${flags} to review` : 'Passed';
+  el.querySelector('.g-count').style.display='none';
+  icons();
+}
+
+let lastGroupEl=null, lastGroup=null;
+function step(){
+  if(qi>=queue.length) return;
+  const a=queue[qi];
+  if(a.type==='prepare'){ liveEl.innerHTML = 'Preparing your draft…'; }
+  else if(a.type==='group-on'){
+    if(lastGroupEl) setGroupResult(lastGroup, lastGroupEl);
+    a.item.el.classList.add('active');
+    a.item.el.querySelector('.g-status').innerHTML = `<span class="g-dot" style="background:var(--ai)"></span>`;
+    lastGroupEl=a.item.el; lastGroup=a.item.g;
+    qi++; return step();
+  }
+  else if(a.type==='cat'){
+    const {c}=a.item;
+    liveEl.innerHTML = `Checking <b>${c.name}</b> · ${c.rules.length} checks`;
+    done += c.rules.length; countN.textContent=done;
+    fillEl.style.width = (done/N*100)+'%';
+  }
+  else if(a.type==='done'){
+    if(lastGroupEl) setGroupResult(lastGroup, lastGroupEl);
+    fillEl.style.width='100%'; fillEl.classList.add('done');
+    liveEl.classList.add('done');
+    liveEl.innerHTML = 'Review complete';
+    expectEl.style.display='none';
+    outcomeText.innerHTML = `<b>${N} checks</b> · ${TOTAL_FLAGS} to review · nothing blocking`;
+    outcomeEl.classList.add('show');
+    stopTimer(); icons();
+    return;
+  }
+  qi++; schedule(a.dur);
+}
+
+function schedule(dur){
+  if(paused) return;
+  const d = reduce ? Math.min(dur,80) : Math.round(dur*speedMult);
+  timers.push(setTimeout(()=>{ if(!paused) step(); }, d));
+}
+
+function reset(){
+  timers.forEach(clearTimeout); timers=[]; qi=0; done=0; paused=false; lastGroupEl=null; lastGroup=null;
+  reg.forEach(({el})=>{
+    el.classList.remove('active','open');
+    el.querySelector('.g-status').innerHTML = `<span class="g-dot"></span>`;
+    const res=el.querySelector('.g-result'); res.style.display='none'; res.textContent='';
+    el.querySelector('.g-count').style.display='';
+  });
+  fillEl.classList.remove('done'); fillEl.style.width='0'; countN.textContent='0';
+  liveEl.classList.remove('done'); liveEl.innerHTML='Preparing your draft…';
+  expectEl.style.display=''; outcomeEl.classList.remove('show');
+  icons();
+  buildQueue(); startTimer(); schedule(800);
+}
+
+/* demo controls */
+document.getElementById('replay').addEventListener('click', reset);
+let detailsOpen=false;
+document.getElementById('detailToggle').addEventListener('click',(e)=>{
+  detailsOpen=!detailsOpen;
+  document.querySelectorAll('.group').forEach(g=>g.classList.toggle('open', detailsOpen));
+  e.currentTarget.innerHTML = (detailsOpen?ico('list')+' Hide details':ico('list')+' Show details');
+  icons();
+});
+document.querySelectorAll('.speed .seg').forEach(seg=>{
+  seg.addEventListener('click',()=>{
+    speedMult = SPEEDS[seg.dataset.speed]||1;
+    document.querySelectorAll('.speed .seg').forEach(s=>s.classList.toggle('active', s===seg));
+    reset();
+  });
+});
+
+reset();
+</script>
+</body>
+</html>
