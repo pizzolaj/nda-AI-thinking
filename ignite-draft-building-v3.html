@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ignite · Draft &amp; review — processing (v3)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --brand-red: #C41F3E;
+    --border: #D9D9D6;
+    --text-1: #383B3E; --text-2: #606366; --text-3: #86888A;
+    --app-bg: #F2F3F2; --surface: #FFFFFF;
+    --success: #397952; --success-bg: #E7F2ED;
+    --neutral: #606366; --neutral-bg: #E8E8E6;
+    /* AI "thinking" colour — used for in-progress AND to mark AI-applied auto-corrections */
+    --ai: #34347A; --ai-bg: rgba(52,52,122,.06); --ai-border: rgba(52,52,122,.28); --ai-track: rgba(52,52,122,.12);
+    --shadow-md: 0 4px 14px rgba(0,0,0,.10);
+    --r-card: 16px; --r-row: 10px; --ease: cubic-bezier(.22,.61,.36,1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    font-feature-settings: 'cv02','cv03','cv04','cv11'; background: var(--app-bg); color: var(--text-1);
+    font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .lucide { width: 1em; height: 1em; stroke-width: 2; vertical-align: middle; }
+
+  .canvas { min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 48px 24px 64px; }
+  .card { width: 100%; max-width: 560px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-card); box-shadow: var(--shadow-md); padding: 26px 26px 22px; }
+
+  .head { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 600; }
+  .head .spark { color: var(--ai); font-size: 18px; }
+  .expect { margin-top: 5px; font-size: 13px; color: var(--text-3); }
+
+  .live { margin-top: 16px; font-size: 14.5px; font-weight: 500; color: var(--ai); min-height: 21px; }
+  .live.done { color: var(--text-1); font-weight: 600; }
+  .live.lin { animation: liveIn .18s var(--ease); }
+  @keyframes liveIn { from { opacity: .3; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+  .bar { margin-top: 11px; height: 8px; border-radius: 8px; background: var(--ai-track); overflow: hidden; position: relative; }
+  .bar .indet { position: absolute; inset: 0; border-radius: 8px; overflow: hidden; display: none; }
+  .bar.warming .indet { display: block; }
+  .bar .indet::before { content:''; position: absolute; top:0; bottom:0; width: 35%; border-radius: 8px; background: var(--ai);
+    animation: indet 1.15s var(--ease) infinite; }
+  @keyframes indet { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+  .fill { height: 100%; width: 100%; border-radius: 8px; background: var(--ai); position: relative;
+    transform-origin: left center; transform: scaleX(0); transition: transform .5s var(--ease); }
+  .fill.done { background: var(--success); }
+  .count { margin-top: 8px; display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-3); font-weight: 500; }
+  .count .n { color: var(--text-2); font-weight: 600; }
+
+  /* phase checklist */
+  .phases { margin-top: 18px; display: flex; flex-direction: column; }
+  .phase { border-radius: var(--r-row); transition: background .2s var(--ease); }
+  .phase.active { background: var(--ai-bg); }
+  .phase.enter { animation: phaseIn .3s var(--ease) both; }
+  @keyframes phaseIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .ph-head { display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 12px; background: none; border: none;
+    font-family: inherit; text-align: left; color: inherit; }
+  button.ph-head { cursor: pointer; }
+  button.ph-head:hover { background: rgba(0,0,0,.02); border-radius: var(--r-row); }
+  .ph-status { width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center; }
+  .ph-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--border); }
+  .ph-label { font-size: 13.5px; color: var(--text-2); font-weight: 500; flex: 1; min-width: 0; }
+  .phase.active .ph-label { color: var(--ai); font-weight: 600; }
+  .ph-done-in { display: inline-flex; animation: checkin .26s var(--ease); }
+  @keyframes checkin { 0% { opacity: 0; transform: scale(.55); } 60% { opacity: 1; transform: scale(1.12); } 100% { opacity: 1; transform: scale(1); } }
+  .ph-spark { color: var(--ai); animation: sparkglimmer 2s ease-in-out infinite; }
+  @keyframes sparkglimmer {
+    0%,100% { opacity:.5; filter: drop-shadow(0 0 0 rgba(52,52,122,0)); }
+    50%     { opacity:1; filter: drop-shadow(0 0 3px rgba(52,52,122,.55)); }
+  }
+  .phase.done .ph-label { color: var(--text-1); }
+  .ph-meta { display: flex; align-items: center; gap: 9px; flex: none; }
+  .ph-count { font-size: 11.5px; color: var(--text-3); font-weight: 600; }
+  .ph-result { font-size: 11.5px; font-weight: 600; white-space: nowrap; display: none; }
+  .ph-result.pass { color: var(--success); }
+  .ph-result.flag, .ph-result.review { color: var(--neutral); }
+  .ph-result.auto { color: var(--ai); }
+  .ph-chev { color: var(--text-3); font-size: 16px; transition: transform .22s var(--ease); }
+  .phase.open .ph-chev { transform: rotate(180deg); }
+
+  .ph-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .25s var(--ease); }
+  .phase.open .ph-body { grid-template-rows: 1fr; }
+  .ph-body-in { overflow: hidden; }
+  .ph-body-pad { padding: 2px 12px 10px 41px; }
+  .cat { padding: 8px 0; }
+  .cat + .cat { border-top: 1px dashed var(--border); }
+  .cat-top { display: flex; align-items: center; gap: 8px; }
+  .cat-name { font-size: 12.5px; font-weight: 600; color: var(--text-1); }
+  .cat-n { font-size: 11.5px; color: var(--text-3); margin-left: 5px; }
+  .cat-sp { flex: 1; }
+  .aibadge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px; border-radius: 999px;
+    font-size: 10px; font-weight: 600; background: var(--neutral-bg); color: var(--text-2); white-space: nowrap; }
+  .aibadge .lucide { font-size: 11px; }
+  .rules { margin-top: 5px; display: flex; flex-direction: column; gap: 3px; }
+  .rule { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); }
+  .rule .lucide { font-size: 13px; flex: none; }
+  .rule .rtag { margin-left: auto; font-size: 10px; font-weight: 600; }
+  .rule .rtag.auto { color: var(--ai); }
+  .rule .rtag.review { color: var(--neutral); }
+
+
+  .outcome { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); display: none; align-items: center; gap: 9px;
+    font-size: 13.5px; color: var(--text-1); }
+  .outcome.show { display: flex; }
+  .outcome .lucide { color: var(--success); font-size: 17px; flex: none; }
+  .outcome b { font-weight: 600; }
+
+  .demo { width: 100%; max-width: 560px; margin-top: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--text-3); }
+  .demo-label { font-weight: 600; letter-spacing: .03em; text-transform: uppercase; font-size: 10.5px; }
+  .demo-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; height: 30px; padding: 0 11px;
+    font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-1); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .demo-btn .lucide { font-size: 13px; color: var(--text-2); }
+  .speed { display: inline-flex; gap: 2px; background: var(--app-bg); border: 1px solid var(--border); border-radius: 7px; padding: 2px; }
+  .speed .seg { background: transparent; border: none; border-radius: 5px; padding: 0 9px; height: 26px; font-family: inherit;
+    font-size: 11.5px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+  .speed .seg.active { background: var(--ai); color: #fff; }
+  .demo .t { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  @media (prefers-reduced-motion: reduce) { .bar .indet::before { animation: none; }
+    .ph-spark, .ph-done-in, .phase.enter, .live.lin { animation: none; }
+    .fill,.ph-body,.ph-chev,.phase { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="card">
+    <div class="head"><svg class="spark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg> CAI is drafting and reviewing your draft</div>
+    <div class="expect" id="expect">This usually takes a minute or two.</div>
+
+    <div class="live" id="live">Starting…</div>
+    <div class="bar warming" id="bar"><div class="indet"></div><div class="fill" id="fill"></div></div>
+    <div class="count" id="countRow" style="visibility:hidden"><span>Reviewing against the rules that apply to this article</span><span><span class="n" id="countN">0</span> of 66 checks</span></div>
+
+    <div class="phases" id="phases"></div>
+
+    <div class="outcome" id="outcome"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success); flex:none"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg> <span id="outcomeText"></span></div>
+  </div>
+
+  <div class="demo">
+    <span class="demo-label">Demo only</span>
+    <button class="demo-btn" id="replay"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Replay</button>
+    <div class="speed" role="group" aria-label="Run speed">
+      <button class="seg active" data-speed="optimal" title="Optimal · under 1 min">Optimal</button>
+      <button class="seg" data-speed="average" title="Average · up to 2 min">Average</button>
+      <button class="seg" data-speed="worst" title="Worst case · 3 min+">Worst</button>
+    </div>
+    <span class="t" id="elapsed" title="Elapsed run time">0:00</span>
+  </div>
+</div>
+
+<script>
+/* rule statuses: 'pass' | 'auto' (auto-corrected) | 'review' (needs user input). Only relevant rules shown. */
+const GROUPS = {
+  seogeo: { name:'SEO & GEO', cats:[
+    { name:'SEO & Discoverability', ai:false, rules:[['Search Intent Alignment','pass'],['Primary Keyword Presence & Placement (H1/intro/H2/meta)','pass'],['Province / Geo-Keyword Targeting','pass'],['Keyword Stuffing Detection','pass'],['Content Depth / Thin-Content Threshold','pass'],['Scraped / Low-Value Auto-Generated Content Detection','pass'],['E-E-A-T Expertise & Trust Signals','pass'],['Insurance Product & Topic Relevance','pass'],['Internal Link Anchor Text & Density','pass'],['Topic Cluster / Pillar-Sibling Integration','pass']] },
+    { name:'GEO & AI-Readiness', ai:false, rules:[['Answer-First / TL;DR Structure for AI Citation','pass'],['Question-Based Headings (PAA-aligned)','pass'],['Competitive Differentiation Statement (substantiated)','pass'],['AI Entity Clarity & Brand Consistency','pass']] },
+  ]},
+  editorial: { name:'Editorial & brand', cats:[
+    { name:'Brand & Terminology Governance', ai:true, rules:[['Product & Line-of-Business Naming','pass'],['Coverage & Feature Terminology Consistency','pass'],['Customer Term Consistency','pass'],['Purpose Statement Usage Restriction','pass'],['Shortened Reference Clarity (the policy/plan/coverage)','pass'],['Capitalization & Proper-Noun Naming Style','pass'],['Cross-Content Wording Consistency Across Assets','pass']] },
+    { name:'Voice & Tone', ai:true, rules:[['Educational (not Sales-Heavy) Tone','pass'],['No Fear, Dramatization or Hard-Sell Urgency (copy & CTAs)','pass'],['Second-Person Reader Voice','pass'],['Canadian Insurance Context & Terminology','pass']] },
+    { name:'Content Architecture & Structure', ai:false, rules:[['Content-Type Structure Pattern','pass'],['Reader-Journey Section Sequence','pass'],['Main Point Upfront / Introductory Answer','pass'],['Plain-Language Definition Placement (first use)','pass'],['FAQ Direct-Answer Architecture','pass'],['Conclusion, Next-Step & CTA Presence/Structure','pass'],['Instructional Wording Clarity (steps, verbs, objects)','pass']] },
+    { name:'Readability & Plain Language', ai:true, rules:[['Plain-Language Readability (sentence/paragraph complexity)','pass'],['Insurance Jargon & Acronym Definition at First Use','pass'],['Reader-Friendly (What-it-Means-to-You) Explanation','pass']] },
+    { name:'Editorial Mechanics', ai:false, rules:[['Sentence-Case Capitalization','pass'],['All-Caps Avoidance','pass'],['Date Formatting (Canadian English)','auto'],['Time Formatting (12-hr, a.m./p.m.)','pass'],['Phone Number Formatting (Canadian marketing style)','pass'],['Currency Code Usage (CAD/USD)','pass'],['Dollar Amount Formatting & Scale Consistency','auto'],['Percent Symbol Usage','pass'],['Scannability & Visual Formatting (paragraphs, subheads, lists, callouts)','pass'],['Grammar & Proofreading','auto']] },
+    { name:'Accessibility', ai:false, rules:[['Accessibility Content Requirements (WCAG 2.1 AA / AODA / ACA)','pass']] },
+  ]},
+  compliance: { name:'Compliance & disclosures', cats:[
+    { name:'Regulatory Compliance & Disclosure', ai:true, rules:[['Misleading Claim & Prohibited-Language Detection','pass'],['Investment Framing Restriction','pass'],['Emotional Overreach / Non-Contractual Benefit Claim','pass'],['Licensed Entity, Insurer Role & Legal-Entity Naming','pass'],['Province / Territory Applicability & Jurisdiction Context','review'],['Required Disclaimer & Disclosure Package by Asset Type','pass'],['Source Traceability, Freshness & External-Link Currency','pass'],['Legacy / Retired Wording Reintroduction','pass'],['Contact Information Accuracy','pass'],['Pricing & Savings Qualification','pass'],['Purchase Timing, Effective Date & Cancellation Language','pass'],['Service Availability Claims (24/7, immediate)','pass']] },
+    { name:'Claims / Coverage Accuracy & Caveats', ai:true, rules:[['Do not use phrases','pass'],['Optional Coverage Presented as Included','pass'],['Coverage-Caveat Proximity (Limits, Deductibles, Exclusions)','review'],['Common Coverage-Fact Corrections (auto/home myths)','pass'],['Benefit Description Alignment with Policy Wording','pass'],['Eligibility Criteria Accuracy','pass'],['Pre-Existing Condition & Medical Statement Accuracy','pass'],['Claims Process Representation Accuracy','pass']] },
+  ]},
+};
+function groupCount(id){ return GROUPS[id].cats.reduce((s,c)=>s+c.rules.length,0); }
+function groupTally(id){ let auto=0,review=0; GROUPS[id].cats.forEach(c=>c.rules.forEach(([,s])=>{ if(s==='auto')auto++; else if(s==='review')review++; })); return {auto,review}; }
+const N = groupCount('seogeo')+groupCount('editorial')+groupCount('compliance');
+const AUTO = groupTally('seogeo').auto+groupTally('editorial').auto+groupTally('compliance').auto;
+const REVIEW = groupTally('seogeo').review+groupTally('editorial').review+groupTally('compliance').review;
+
+const PHASES = [
+  { label:'Gathering authoritative sources' },
+  { label:'Grounding against approved corpus' },
+  { label:'Drafting in accordance with CIBC guidelines' },
+  { label:'Adding citations' },
+  { label:'Checking SEO/GEO recommendations', group:'seogeo' },
+  { label:'Checking CIBC editorial guidelines & brand', group:'editorial' },
+  { label:'Checking compliance & disclosures', group:'compliance' },
+  { label:'Applying auto-corrections', auto:true },
+  { label:'Draft ready for review', final:true },
+];
+
+function ico(n,cls,st){ return '<svg'+(cls?' class="'+cls+'"':'')+' viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'+(st?' style="'+st+'"':'')+'>'+(IP[n]||'')+'</svg>'; }
+function icons(){ /* icons are inline SVG — no external library needed */ }
+/* hardcoded sparkles SVG (renders independent of lucide re-scan timing) */
+const SPARK = '<svg class="ph-spark" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3H8"/><path d="m15.007 5.008 3.987 3.986"/><path d="M20 15v4"/><path d="M21.174 6.813a2.82 2.82 0 0 0-3.986-3.987L3.842 16.175a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="M22 17h-4"/><path d="M4 5v4"/><path d="M6 7H2"/><path d="M9 2v2"/></svg>';
+/* hardcoded status-icon SVGs (render independent of lucide re-scan timing) */
+const IP = {
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  alert:'<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+  wand:'<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/>',
+  circle:'<circle cx="12" cy="12" r="10"/>',
+  sparkles:'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
+  'chevron-down':'<path d="m6 9 6 6 6-6"/>',
+  list:'<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
+  'rotate-ccw':'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'
+};
+function svgi(paths, color, w){ w=w||14; return '<svg viewBox="0 0 24 24" width="'+w+'" height="'+w+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:'+color+'">'+paths+'</svg>'; }
+function ruleIcon(status, resolved){
+  if(status==='pass') return svgi(IP.check,'var(--success)');
+  if(!resolved) return svgi(IP.alert,'var(--neutral)'); // flagged (pre auto-correct)
+  if(status==='auto') return svgi(IP.wand,'var(--ai)');
+  return svgi(IP.alert,'var(--neutral)'); // to review
+}
+
+/* render phases */
+const phasesEl = document.getElementById('phases');
+const phaseEls = [];
+PHASES.forEach((p,i)=>{
+  const el = document.createElement('div');
+  el.className = 'phase'; el.dataset.i = i;
+  const expandable = !!p.group;
+  const headTag = expandable ? 'button' : 'div';
+  el.innerHTML = `
+    <${headTag} class="ph-head"${expandable?' type="button"':''}>
+      <span class="ph-status"><span class="ph-dot"></span></span>
+      <span class="ph-label">${p.label}</span>
+      <span class="ph-meta">
+        ${expandable?`<span class="ph-count">${groupCount(p.group)}</span>`:''}
+        <span class="ph-result"></span>
+        ${expandable?ico('chevron-down','ph-chev'):''}
+      </span>
+    </${headTag}>
+    ${expandable?`<div class="ph-body"><div class="ph-body-in"><div class="ph-body-pad">
+      ${GROUPS[p.group].cats.map(c=>`
+        <div class="cat">
+          <div class="cat-top">
+            <span class="cat-name">${c.name}<span class="cat-n">${c.rules.length}</span></span>
+            <span class="cat-sp"></span>
+            ${c.ai?`<span class="aibadge" title="Checked using rules written with CIBC insurance experts">${ico('sparkles')} AI-assistant reviewed</span>`:''}
+          </div>
+          <div class="rules">
+            ${c.rules.map(([r,s])=>`<div class="rule" data-status="${s}"><span class="ric">${svgi(IP.circle,'var(--text-3)')}</span><span>${r}</span><span class="rtag"></span></div>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div></div></div>`:''}`;
+  if(expandable) el.querySelector('.ph-head').addEventListener('click', ()=> el.classList.toggle('open'));
+  phasesEl.appendChild(el);
+  phaseEls.push(el);
+});
+icons();
+
+/* engine — checks tick one-by-one; live line stays per-phase */
+const liveEl=document.getElementById('live'), fillEl=document.getElementById('fill'), countN=document.getElementById('countN');
+const expectEl=document.getElementById('expect'), outcomeEl=document.getElementById('outcome'), outcomeText=document.getElementById('outcomeText'), elapsedEl=document.getElementById('elapsed');
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SPEEDS={optimal:1,average:2,worst:3.6}; let speedMult=1, done=0, timers=[], si=0, steps=[];
+let startTime=0,pausedAccum=0,tick=null;
+function fmt(ms){const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+function updTimer(){ elapsedEl.textContent=fmt(Date.now()-startTime-pausedAccum); }
+function startTimer(){ startTime=Date.now(); pausedAccum=0; clearInterval(tick); tick=setInterval(updTimer,250); updTimer(); }
+function stopTimer(){ clearInterval(tick); tick=null; updTimer(); }
+
+const phaseRules={};
+PHASES.forEach((p,i)=>{ if(p.group) phaseRules[i]=Array.from(phaseEls[i].querySelectorAll('.rule')); });
+
+function setResultChip(el,p){
+  const t=groupTally(p.group), res=el.querySelector('.ph-result'), cnt=el.querySelector('.ph-count');
+  if(cnt) cnt.style.display='none'; res.style.display='';
+  if(t.auto+t.review===0){ res.className='ph-result pass'; res.textContent='Passed'; }
+  else { res.className='ph-result flag'; res.textContent=(t.auto+t.review)+' flagged'; }
+}
+function applyAutoCorrections(){
+  ['seogeo','editorial','compliance'].forEach(gid=>{
+    const el=phaseEls[PHASES.findIndex(p=>p.group===gid)], t=groupTally(gid), res=el.querySelector('.ph-result');
+    if(t.auto+t.review>0){
+      if(t.review===0){ res.className='ph-result auto'; res.textContent=t.auto+' auto-corrected'; }
+      else if(t.auto===0){ res.className='ph-result review'; res.textContent=t.review+' to review'; }
+      else { res.className='ph-result review'; res.textContent=`${t.auto} auto-corrected · ${t.review} to review`; }
+    }
+    el.querySelectorAll('.rule').forEach(r=>{ const s=r.dataset.status;
+      r.querySelector('.ric').innerHTML=ruleIcon(s,true);
+      const tag=r.querySelector('.rtag');
+      tag.textContent = s==='auto'?'auto-corrected' : s==='review'?'needs your input' : '';
+      tag.className = 'rtag '+(s==='auto'?'auto':s==='review'?'review':'');
+    });
+  });
+  icons();
+}
+function setLive(t){ liveEl.textContent=t; liveEl.classList.remove('lin'); void liveEl.offsetWidth; liveEl.classList.add('lin'); }
+function activate(i){ const el=phaseEls[i], p=PHASES[i];
+  el.classList.add('active');
+  el.querySelector('.ph-status').innerHTML = SPARK;
+  setLive(p.label + '…');
+  icons();
+}
+function markDone(i){ if(i<0) return; const el=phaseEls[i], p=PHASES[i];
+  el.classList.remove('active'); el.classList.add('done');
+  el.querySelector('.ph-status').innerHTML = '<span class="ph-done-in">'+svgi(IP.check,'var(--success)',16)+'</span>';
+  if(p.group && el.querySelector('.ph-result').style.display==='none') setResultChip(el,p);
+  icons();
+}
+function finish(i){ markDone(i);
+  fillEl.style.transform='scaleX(1)'; fillEl.classList.add('done');
+  liveEl.classList.add('done'); setLive('Draft ready for review');
+  expectEl.style.display='none';
+  outcomeText.innerHTML = `<b>${N} checks</b> · ${AUTO} auto-corrected · ${REVIEW} to review`;
+  outcomeEl.classList.add('show'); stopTimer(); icons();
+}
+function applyStep(s){
+  if(s.t==='start'){ markDone(s.i-1); activate(s.i);
+    // first check phase: switch bar from "warming up" to a determinate, check-driven fill
+    if(PHASES[s.i].group && document.getElementById('bar').classList.contains('warming')){
+      document.getElementById('bar').classList.remove('warming');
+      document.getElementById('countRow').style.visibility='visible';
+    }
+  }
+  else if(s.t==='rule'){ const el=phaseRules[s.i][s.ri]; el.querySelector('.ric').innerHTML=ruleIcon(el.dataset.status,false);
+    done++; countN.textContent=done; fillEl.style.transform='scaleX('+(done/N)+')'; }
+  else if(s.t==='cdone'){ setResultChip(phaseEls[s.i], PHASES[s.i]); }
+  else if(s.t==='auto'){ applyAutoCorrections(); }
+  else if(s.t==='final'){ finish(s.i); }
+}
+function buildSteps(){
+  steps=[];
+  PHASES.forEach((p,i)=>{
+    if(p.group){ steps.push({t:'start',i,dur:150});
+      for(let r=0;r<groupCount(p.group);r++) steps.push({t:'rule',i,ri:r,dur:520});
+      steps.push({t:'cdone',i,dur:300});
+    } else if(p.auto){ steps.push({t:'start',i,dur:0}); steps.push({t:'auto',i,dur:4000}); }
+    else if(p.final){ steps.push({t:'start',i,dur:0}); steps.push({t:'final',i,dur:0}); }
+    else { steps.push({t:'start',i,dur:2500}); }
+  });
+}
+function runStep(){ if(si>=steps.length) return; const s=steps[si];
+  applyStep(s); si++;
+  if(s.t==='final') return; schedule(runStep, s.dur);
+}
+function schedule(fn,dur){ const d=reduce?Math.min(dur,60):Math.round(dur*speedMult); timers.push(setTimeout(fn,d)); }
+
+function reset(){
+  timers.forEach(clearTimeout); timers=[]; si=0; done=0;
+  phaseEls.forEach(el=>{ el.classList.remove('active','done','open','enter');
+    el.querySelector('.ph-status').innerHTML = `<span class="ph-dot"></span>`;
+    const res=el.querySelector('.ph-result'); if(res){ res.style.display='none'; res.textContent=''; }
+    const cnt=el.querySelector('.ph-count'); if(cnt) cnt.style.display='';
+    el.querySelectorAll('.rule').forEach(r=>{ r.querySelector('.ric').innerHTML=svgi(IP.circle,'var(--text-3)');
+      const tag=r.querySelector('.rtag'); tag.textContent=''; tag.className='rtag'; });
+  });
+  fillEl.classList.remove('done'); fillEl.style.transform='scaleX(0)'; countN.textContent='0';
+  document.getElementById('bar').classList.add('warming');
+  document.getElementById('countRow').style.visibility='hidden';
+  liveEl.classList.remove('done'); liveEl.textContent='Starting…';
+  expectEl.style.display=''; outcomeEl.classList.remove('show');
+  void phasesEl.offsetWidth; // reflow so the entrance animation re-triggers on replay
+  phaseEls.forEach((el,i)=>{ el.style.animationDelay=(i*30)+'ms'; el.classList.add('enter'); });
+  icons(); buildSteps(); startTimer(); schedule(runStep, 900);
+}
+
+document.getElementById('replay').addEventListener('click', reset);
+document.querySelectorAll('.speed .seg').forEach(seg=>{
+  seg.addEventListener('click',()=>{ speedMult=SPEEDS[seg.dataset.speed]||1;
+    document.querySelectorAll('.speed .seg').forEach(s=>s.classList.toggle('active', s===seg)); reset(); });
+});
+
+reset();
+</script>
+</body>
+</html>
